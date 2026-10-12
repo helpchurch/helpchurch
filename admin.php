@@ -1,9 +1,7 @@
 <?php
-// admin.php
+// admin.php - Read JSON submissions without SQL
 session_start();
-require_once 'db.php';
 
-// Simple Authentication
 if (isset($_POST['login'])) {
     if ($_POST['password'] === 'admin123') {
         $_SESSION['admin_logged'] = true;
@@ -49,9 +47,13 @@ if (!isset($_SESSION['admin_logged']) || $_SESSION['admin_logged'] !== true):
 exit; 
 endif;
 
-// Fetch Submissions
-$gift_cards = $conn->query("SELECT * FROM gift_cards ORDER BY id DESC");
-$proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
+function read_json($filename) {
+    if (!file_exists($filename)) return [];
+    return json_decode(file_get_contents($filename), true) ?? [];
+}
+
+$gift_cards = read_json('gift_cards.json');
+$proofs     = read_json('proofs.json');
 ?>
 
 <!DOCTYPE html>
@@ -74,26 +76,24 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
         <!-- Gift Cards Table -->
         <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-10 shadow-xl">
             <h2 class="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                🎁 Gift Card Submissions (For Kids' Clothing)
+                🎁 Gift Card Submissions
             </h2>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="border-b border-slate-700 text-slate-400 text-xs uppercase">
-                            <th class="p-3">ID</th>
                             <th class="p-3">Donor Email</th>
                             <th class="p-3">Card Type</th>
                             <th class="p-3">Code / PIN</th>
                             <th class="p-3">Amount</th>
-                            <th class="p-3">Proof Image</th>
+                            <th class="p-3">Proof Screenshot</th>
                             <th class="p-3">Date</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-700 text-sm">
-                        <?php if ($gift_cards->num_rows > 0): ?>
-                            <?php while ($row = $gift_cards->fetch_assoc()): ?>
+                        <?php if (count($gift_cards) > 0): ?>
+                            <?php foreach ($gift_cards as $row): ?>
                                 <tr class="hover:bg-slate-700/50">
-                                    <td class="p-3 font-mono text-slate-400">#<?= $row['id'] ?></td>
                                     <td class="p-3 font-medium"><?= htmlspecialchars($row['donor_email']) ?></td>
                                     <td class="p-3">
                                         <span class="bg-slate-900 px-2.5 py-1 rounded-full text-xs font-semibold text-amber-400 border border-slate-700">
@@ -102,13 +102,13 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
                                     </td>
                                     <td class="p-3 font-mono text-emerald-400">
                                         <div>Code: <?= htmlspecialchars($row['card_code']) ?></div>
-                                        <?php if ($row['card_pin']): ?>
+                                        <?php if (!empty($row['card_pin'])): ?>
                                             <div class="text-xs text-slate-400">PIN: <?= htmlspecialchars($row['card_pin']) ?></div>
                                         <?php endif; ?>
                                     </td>
                                     <td class="p-3 font-semibold text-white">$<?= number_format($row['amount'], 2) ?></td>
                                     <td class="p-3">
-                                        <?php if ($row['image_path']): ?>
+                                        <?php if (!empty($row['image_path'])): ?>
                                             <a href="<?= htmlspecialchars($row['image_path']) ?>" target="_blank" class="text-blue-400 hover:underline flex items-center gap-1 text-xs">
                                                 View Screenshot
                                             </a>
@@ -118,9 +118,9 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
                                     </td>
                                     <td class="p-3 text-slate-400 text-xs"><?= $row['created_at'] ?></td>
                                 </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="7" class="p-4 text-center text-slate-500">No gift card entries found.</td></tr>
+                            <tr><td colspan="6" class="p-4 text-center text-slate-500">No gift card entries found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -130,7 +130,7 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
         <!-- Payment Proofs Table -->
         <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl">
             <h2 class="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                💳 Direct Payment Proof Screenshots (Zelle, Cash App, Chime, etc.)
+                💳 Direct Payment Proof Screenshots (Zelle, Cash App, PayPal, etc.)
             </h2>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -145,8 +145,8 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-700 text-sm">
-                        <?php if ($proofs->num_rows > 0): ?>
-                            <?php while ($row = $proofs->fetch_assoc()): ?>
+                        <?php if (count($proofs) > 0): ?>
+                            <?php foreach ($proofs as $row): ?>
                                 <tr class="hover:bg-slate-700/50">
                                     <td class="p-3 font-mono text-amber-400"><?= htmlspecialchars($row['receipt_number']) ?></td>
                                     <td class="p-3">
@@ -162,7 +162,7 @@ $proofs = $conn->query("SELECT * FROM payment_proofs ORDER BY id DESC");
                                     </td>
                                     <td class="p-3 text-slate-400 text-xs"><?= $row['created_at'] ?></td>
                                 </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         <?php else: ?>
                             <tr><td colspan="6" class="p-4 text-center text-slate-500">No payment proofs uploaded yet.</td></tr>
                         <?php endif; ?>
