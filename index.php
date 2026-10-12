@@ -1,86 +1,21 @@
 <?php
 // index.php
-require_once 'db.php';
-
-$message = '';
-$error = '';
-
-// Handle Form Submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    // 1. Submit Gift Card Entry
-    if (isset($_POST['action']) && $_POST['action'] === 'submit_giftcard') {
-        $donor_email = $conn->real_escape_string($_POST['email']);
-        $card_type   = $conn->real_escape_string($_POST['card_type']);
-        $card_code   = $conn->real_escape_string($_POST['card_code']);
-        $card_pin    = $conn->real_escape_string($_POST['card_pin'] ?? '');
-        $amount      = floatval($_POST['amount'] ?? 0);
-        $image_path  = '';
-
-        // Handle Image Upload
-        if (isset($_FILES['card_image']) && $_FILES['card_image']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['card_image']['name'], PATHINFO_EXTENSION);
-            $target = "uploads/gc_" . time() . "_" . rand(1000, 9999) . "." . $ext;
-            if (move_uploaded_file($_FILES['card_image']['tmp_name'], $target)) {
-                $image_path = $target;
-            }
-        }
-
-        $sql = "INSERT INTO gift_cards (donor_email, card_type, card_code, card_pin, amount, image_path) 
-                VALUES ('$donor_email', '$card_type', '$card_code', '$card_pin', '$amount', '$image_path')";
-        
-        if ($conn->query($sql)) {
-            $message = "Your gift card submission has been received. May God bless your heart for clothing our children!";
-        } else {
-            $error = "Error saving entry: " . $conn->error;
-        }
+function get_prayers() {
+    $filename = 'prayers.json';
+    if (!file_exists($filename)) {
+        // Default initial prayers
+        return [
+            ['author' => 'Pastor Mark', 'location' => 'Kiev, Ukraine', 'message' => 'God is our refuge and strength, an ever-present help in trouble.', 'avatar_url' => 'https://i.pravatar.cc/100?img=11'],
+            ['author' => 'Sarah Jenkins', 'location' => 'Texas, USA', 'message' => 'Praying daily for the children and families of Ukraine.', 'avatar_url' => 'https://i.pravatar.cc/100?img=5'],
+            ['author' => 'Elena Rostova', 'location' => 'Lviv, Ukraine', 'message' => 'Thank you to every believer supporting our shelter and winter apparel drive.', 'avatar_url' => 'https://i.pravatar.cc/100?img=9']
+        ];
     }
-
-    // 2. Submit Payment Proof Screenshot
-    if (isset($_POST['action']) && $_POST['action'] === 'submit_payment_proof') {
-        $donor_name     = $conn->real_escape_string($_POST['donor_name']);
-        $donor_email    = $conn->real_escape_string($_POST['donor_email']);
-        $payment_method = $conn->real_escape_string($_POST['payment_method']);
-        $amount         = floatval($_POST['amount']);
-        $receipt_number = "MIGHTY-" . strtoupper(substr(md5(uniqid()), 0, 8));
-        $proof_image    = '';
-
-        if (isset($_FILES['proof_image']) && $_FILES['proof_image']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['proof_image']['name'], PATHINFO_EXTENSION);
-            $target = "uploads/proof_" . time() . "_" . rand(1000, 9999) . "." . $ext;
-            if (move_uploaded_file($_FILES['proof_image']['tmp_name'], $target)) {
-                $proof_image = $target;
-            }
-        }
-
-        if ($proof_image !== '') {
-            $sql = "INSERT INTO payment_proofs (donor_name, donor_email, payment_method, amount, receipt_number, proof_image) 
-                    VALUES ('$donor_name', '$donor_email', '$payment_method', '$amount', '$receipt_number', '$proof_image')";
-            if ($conn->query($sql)) {
-                $message = "Payment proof uploaded successfully! Official Receipt #: " . $receipt_number;
-            } else {
-                $error = "Failed to store proof.";
-            }
-        } else {
-            $error = "Please upload a valid payment screenshot.";
-        }
-    }
-
-    // 3. Post Prayer Request
-    if (isset($_POST['action']) && $_POST['action'] === 'submit_prayer') {
-        $author   = $conn->real_escape_string($_POST['author']);
-        $location = $conn->real_escape_string($_POST['location']);
-        $msg      = $conn->real_escape_string($_POST['message']);
-        $avatar   = "https://i.pravatar.cc/100?img=" . rand(1, 70);
-
-        $sql = "INSERT INTO prayers (author, location, message, avatar_url) VALUES ('$author', '$location', '$msg', '$avatar')";
-        $conn->query($sql);
-        $message = "Your prayer has been added to the wall!";
-    }
+    return json_decode(file_get_contents($filename), true) ?? [];
 }
 
-// Retrieve Prayer Wall Entries
-$prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15");
+$prayers = get_prayers();
+$status = $_GET['status'] ?? '';
+$receipt = $_GET['receipt'] ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -93,7 +28,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased">
 
-    <!-- Header Navigation -->
+    <!-- Top Navigation -->
     <nav class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
             <div class="flex items-center gap-3">
@@ -110,15 +45,20 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
         </div>
     </nav>
 
-    <!-- Alerts -->
-    <?php if ($message): ?>
+    <!-- Status Notifications -->
+    <?php if ($status === 'success_gc'): ?>
         <div class="bg-emerald-500/20 border border-emerald-500 text-emerald-300 p-4 text-center font-medium">
-            <i class="fa-solid fa-circle-check mr-2"></i> <?= htmlspecialchars($message) ?>
+            <i class="fa-solid fa-circle-check mr-2"></i> Your gift card submission has been received. May God bless your heart for clothing our children!
         </div>
     <?php endif; ?>
-    <?php if ($error): ?>
-        <div class="bg-red-500/20 border border-red-500 text-red-300 p-4 text-center font-medium">
-            <i class="fa-solid fa-triangle-exclamation mr-2"></i> <?= htmlspecialchars($error) ?>
+    <?php if ($status === 'success_proof'): ?>
+        <div class="bg-emerald-500/20 border border-emerald-500 text-emerald-300 p-4 text-center font-medium">
+            <i class="fa-solid fa-circle-check mr-2"></i> Payment proof uploaded successfully! Your Official Receipt #: <strong><?= htmlspecialchars($receipt) ?></strong>
+        </div>
+    <?php endif; ?>
+    <?php if ($status === 'success_prayer'): ?>
+        <div class="bg-emerald-500/20 border border-emerald-500 text-emerald-300 p-4 text-center font-medium">
+            <i class="fa-solid fa-circle-check mr-2"></i> Your prayer has been posted to the wall!
         </div>
     <?php endif; ?>
 
@@ -146,7 +86,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
         </div>
     </header>
 
-    <!-- Donation Options Section -->
+    <!-- Donation Section -->
     <section id="donate" class="py-16 px-4 max-w-5xl mx-auto">
         <div class="text-center mb-12">
             <h2 class="text-3xl font-extrabold text-white mb-2">Choose Your Donation Method</h2>
@@ -162,7 +102,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                         <i class="fa-solid fa-mobile-screen"></i> Zelle, PayPal, Cash App, Chime, Western Union
                     </h3>
                     <p class="text-slate-300 text-sm mb-6">
-                        Send your gift directly to our verified ministry handle. After transferring, upload your screenshot to receive an official tax-deductible receipt.
+                        Send your gift directly to our verified ministry handle. After transferring, upload your screenshot to receive an official receipt.
                     </p>
                     <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 font-mono text-sm space-y-2">
                         <div class="flex justify-between"><span class="text-slate-500">Zelle / PayPal Email:</span> <span class="text-amber-400">helplife@mightychurch.com</span></div>
@@ -171,8 +111,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                     </div>
                 </div>
 
-                <!-- Proof Submission Form -->
-                <form action="index.php" method="POST" enctype="multipart/form-data" class="space-y-4 border-t border-slate-800 pt-4">
+                <form action="save.php" method="POST" enctype="multipart/form-data" class="space-y-4 border-t border-slate-800 pt-4">
                     <input type="hidden" name="action" value="submit_payment_proof">
                     <h4 class="text-xs font-bold uppercase text-slate-400">Upload Transfer Proof / Screenshot</h4>
                     <input type="text" name="donor_name" placeholder="Your Name" required class="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-sm text-white">
@@ -206,7 +145,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                     </p>
                 </div>
 
-                <form action="index.php" method="POST" enctype="multipart/form-data" class="space-y-4">
+                <form action="save.php" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <input type="hidden" name="action" value="submit_giftcard">
                     <div>
                         <label class="block text-xs font-semibold text-slate-400 mb-1">Select Gift Card Brand</label>
@@ -244,7 +183,7 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
         </div>
     </section>
 
-    <!-- Prayer & Hope Wall -->
+    <!-- Prayer Wall -->
     <section class="py-16 bg-slate-900/50 border-t border-slate-800 px-4">
         <div class="max-w-6xl mx-auto">
             <div class="text-center mb-12">
@@ -252,8 +191,8 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                 <p class="text-slate-400">Messages of faith and solidarity from supporters across the world</p>
             </div>
 
-            <!-- Add Prayer Form -->
-            <form action="index.php" method="POST" class="max-w-xl mx-auto bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-12 space-y-4">
+            <!-- Post Prayer Form -->
+            <form action="save.php" method="POST" class="max-w-xl mx-auto bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-12 space-y-4">
                 <input type="hidden" name="action" value="submit_prayer">
                 <h3 class="text-sm font-bold text-amber-400 uppercase">Post Your Encouragement / Prayer</h3>
                 <div class="grid grid-cols-2 gap-2">
@@ -264,9 +203,9 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                 <button type="submit" class="w-full bg-amber-500 text-slate-950 font-bold py-2.5 rounded-lg hover:bg-amber-400 text-sm transition">Post to Prayer Wall</button>
             </form>
 
-            <!-- Display Cards -->
+            <!-- Cards -->
             <div class="grid md:grid-cols-3 gap-6">
-                <?php while ($p = $prayers_result->fetch_assoc()): ?>
+                <?php foreach ($prayers as $p): ?>
                     <div class="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
                         <p class="text-slate-300 text-sm mb-4 italic">"<?= htmlspecialchars($p['message']) ?>"</p>
                         <div class="flex items-center gap-3 pt-4 border-t border-slate-800">
@@ -277,12 +216,11 @@ $prayers_result = $conn->query("SELECT * FROM prayers ORDER BY id DESC LIMIT 15"
                             </div>
                         </div>
                     </div>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>
 
-    <!-- Footer -->
     <footer class="py-8 bg-slate-950 border-t border-slate-800 text-center text-xs text-slate-500">
         <p>&copy; <?= date('Y') ?> Mighty Church Ukraine Relief Ministry. All rights reserved.</p>
         <p class="mt-1">Official Contact: helplife@mightychurch.com</p>
